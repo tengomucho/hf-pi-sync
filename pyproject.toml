@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hf-pi-sync"
+version = "0.1.0"
+description = "hf CLI extension to sync pi agent config across VMs via Hugging Face Buckets."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Alvaro Moran" }]
+keywords = ["huggingface", "hf", "cli", "extension", "pi", "sync", "buckets"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+    "huggingface_hub>=1.16",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+# Entry point name MUST be hf-<name> for the hf CLI to discover & dispatch it.
+hf-pi-sync = "hf_pi_sync.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/tengomucho/hf-pi-sync"
+Repository = "https://github.com/tengomucho/hf-pi-sync"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hf_pi_sync"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # line length handled by formatter
