@@ -57,6 +57,16 @@ class SyncResult:
         flag = " [dry-run]" if self.dry_run else ""
         return f"{self.action}{flag} -> {self.bucket_id} ({self.files} files) {self.message}".strip()
 
+    def with_action(self, action: str) -> SyncResult:
+        """Return a copy with a relabeled action (used by auto-sync)."""
+        return SyncResult(
+            action=action,
+            bucket_id=self.bucket_id,
+            files=self.files,
+            dry_run=self.dry_run,
+            message=self.message,
+        )
+
 
 def _excludes(with_auth: bool) -> list[str]:
     return list(default_excludes(with_auth=with_auth))
@@ -348,14 +358,54 @@ def cmd_pull(
     )
 
 
+def _local_latest_mtime(with_auth: bool) -> float:
+    """Latest mtime across the shareable subset of the agent dir.
+
+    Staging uses ``shutil.copytree`` (``copy2``), so staged copies preserve the
+    source mtimes and the comparison is faithful.
+    """
+    stage = _stage(with_auth)
+    try:
+        mtimes = [p.stat().st_mtime for p in stage.rglob("*") if p.is_file()]
+        return max(mtimes) if mtimes else 0.0
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+def _remote_latest_mtime(bk: Buckets, bucket_id: str) -> float:
+    """Latest mtime across all files in the bucket (0 if empty)."""
+    mtimes = [f.mtime for f in bk.list_files(bucket_id)]
+    return max(mtimes) if mtimes else 0.0
+
+
 def cmd_auto(
     bucket: str | None = None,
     *,
     with_auth: bool = False,
     dry_run: bool = False,
 ) -> SyncResult:
-    """Compare local vs remote mtimes and push or pull accordingly."""
-    raise NotImplementedError("auto-sync is not implemented yet")
+    """Compare local vs remote mtimes and push or pull accordingly.
+
+    Heuristic: the latest mtime across all tracked files decides direction.
+    Newer local files -> push; newer remote files -> pull; equal or empty bucket
+    -> push (first sync). Call ``init`` once to create the bucket first.
+    """
+    bk = Buckets()
+    namespace = _require_login(bk)
+    bucket_id = bk.resolve_bucket_id(bucket, namespace)
+    if not bk.bucket_exists(bucket_id):
+        raise BucketMissingError(bucket_id)
+
+    local_latest = _local_latest_mtime(with_auth)
+    remote_latest = _remote_latest_mtime(bk, bucket_id)
+
+    if local_latest >= remote_latest:
+        action = "auto-push"
+        return cmd_push(bucket_id, with_auth=with_auth, dry_run=dry_run).with_action(
+            action
+        )
+    action = "auto-pull"
+    return cmd_pull(bucket_id, with_auth=with_auth, dry_run=dry_run).with_action(action)
 
 
 __all__ = [

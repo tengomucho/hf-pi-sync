@@ -72,15 +72,19 @@ def auto_sync_default(
                 with_auth=ctx.obj["with_auth"],
                 dry_run=ctx.obj["dry_run"],
             )
-        except NotImplementedError:
-            typer.secho(
-                "auto-sync is not implemented yet. "
-                "Use `hf pi-sync push` or `hf pi-sync pull`.",
-                fg=typer.colors.YELLOW,
-            )
+        except syncmod.NotLoggedInError as e:
+            typer.secho(str(e), fg=typer.colors.RED)
             raise typer.Exit(code=1) from None
-        _print_result(result)
-        raise typer.Exit()
+        except syncmod.BucketMissingError as e:
+            typer.secho(str(e), fg=typer.colors.RED)
+            raise typer.Exit(code=1) from None
+        except RuntimeError as e:  # e.g. `pi` command not found
+            typer.secho(str(e), fg=typer.colors.RED)
+            raise typer.Exit(code=1) from None
+        # Warn only on differences; dry-run is an explicit preview.
+        if dry_run or result.files > 0 or "installed" in (result.message or ""):
+            _print_result(result)
+        raise typer.Exit
 
 
 @app.command("init")
