@@ -87,6 +87,32 @@ def test_pull_missing_bucket_raises(dummy_bucket, fake_agent):
     assert exc.value.bucket_id == dummy_bucket
 
 
+def _seed_bucket_with_settings(dummy_bucket, text):
+    Buckets().create_bucket(dummy_bucket)
+    st = Path(tempfile.mkdtemp())
+    (st / "settings.json").write_text(text)
+    try:
+        Buckets().api.sync_bucket(source=str(st), dest=f"hf://buckets/{dummy_bucket}")
+    finally:
+        shutil.rmtree(st, ignore_errors=True)
+
+
+def test_pull_into_fresh_agent_dir_creates_it(dummy_bucket, tmp_path, monkeypatch):
+    # Simulate a brand-new VM: ~/.pi/agent does not exist yet.
+    fresh = tmp_path / "fresh-home"
+    fresh.mkdir()
+    monkeypatch.setattr(syncmod, "agent_dir", lambda: fresh / ".pi" / "agent")
+    monkeypatch.setattr(syncmod, "_pi_install", lambda really_run: None)
+    _seed_bucket_with_settings(dummy_bucket, '{"defaultModel": "zai-org/GLM-5.2"}')
+
+    r = syncmod.cmd_pull(bucket=dummy_bucket)
+
+    assert r.files >= 1
+    dst = fresh / ".pi" / "agent"
+    assert dst.is_dir()  # created on pull
+    assert (dst / "settings.json").is_file()
+
+
 def test_pull_dry_run_writes_nothing(dummy_bucket, fake_agent):
     Buckets().create_bucket(dummy_bucket)
     syncmod.cmd_push(bucket=dummy_bucket)

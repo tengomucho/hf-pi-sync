@@ -144,8 +144,7 @@ def _merge_stage_into_agent(
     and (by default) ``auth.json`` are preserved untouched on the local side.
     """
     dst = agent_dir()
-    if not dst.is_dir():
-        raise AgentDirMissing(str(dst))
+    dst.mkdir(parents=True, exist_ok=True)
     excluded_dirs = set(EXCLUDED_DIRS)
     excluded_files = set(EXCLUDED_FILES_DEFAULT if not with_auth else ())
 
