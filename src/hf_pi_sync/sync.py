@@ -194,10 +194,16 @@ def _pi_install(really_run: bool) -> None:
     if not really_run:
         return
     try:
-        subprocess.run(["pi", "install"], check=True)
+        subprocess.run(["pi", "update", "--extensions"], check=True)
     except FileNotFoundError as exc:
         raise RuntimeError(
-            "`pi` command not found on PATH. Run `npm i -g @earendil-works/pi-coding-agent` first."
+            "`pi` command not found on PATH. "
+            "Run `npm i -g @earendil-works/pi-coding-agent` first."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"`pi update --extensions` failed (exit code {exc.returncode}). "
+            "Run it manually to see the full output."
         ) from exc
 
 
@@ -311,14 +317,14 @@ def cmd_pull(
     mirror: bool = False,
     dry_run: bool = False,
 ) -> SyncResult:
-    """Download bucket, merge into ~/.pi/agent/, run ``pi install``.
+    """Download bucket, merge into ~/.pi/agent/, run ``pi update --extensions``.
 
     Pull requires the bucket to already exist (run ``init`` to create it). The
     merge is additive by default (never deletes local files); ``mirror`` removes
     local shareable files not present in the bucket. Excluded paths
     (``npm/``, ``bin/``, ``sessions/``, and by default ``auth.json``) are never
-    overwritten or deleted. After merge, ``pi install`` rebuilds the local
-    ``npm/`` tree from ``settings.json`` (skipped on dry-run).
+    overwritten or deleted. After merge, ``pi update --extensions`` rebuilds the
+    local ``npm/`` tree from ``settings.json`` (skipped on dry-run).
 
     The result ``files`` field is the number of files downloaded; ``message``
     carries the local merge outcome and install status.

@@ -6,7 +6,7 @@ Subcommands:
 
 - ``hf pi-sync init``  login check, create/get private bucket, first push.
 - ``hf pi-sync push``  stage shareable subset and upload to the bucket.
-- ``hf pi-sync pull``  download bucket, merge into ~/.pi/agent/, run ``pi install``.
+- ``hf pi-sync pull``  download bucket, merge into ~/.pi/agent/, run ``pi update --extensions``.
 - ``hf pi-sync``       auto-sync: compare mtimes and push or pull accordingly.
 
 Common options:
@@ -172,7 +172,7 @@ def pull_cmd(
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show plan, do nothing."),
 ) -> None:
-    """Download bucket, merge into ~/.pi/agent/, run `pi install`."""
+    """Download bucket, merge into ~/.pi/agent/, run `pi update --extensions`."""
     try:
         result = syncmod.cmd_pull(
             _resolve_bucket(bucket),

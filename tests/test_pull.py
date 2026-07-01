@@ -2,9 +2,9 @@
 
 Pull merges downloaded files into the live agent dir. To avoid mutating the
 real ``~/.pi/agent/``, every test redirects ``agent_dir`` to a tmp path and
-stubs out ``pi install``. The ``dummy_bucket`` fixture (conftest) provisions and
-deletes a unique private bucket, and a ``fake_agent`` fixture seeds a local
-agent dir with the shareable subset to push from.
+stubs out ``pi update --extensions``. The ``dummy_bucket`` fixture (conftest)
+provisions and deletes a unique private bucket, and a ``fake_agent`` fixture
+seeds a local agent dir with the shareable subset to push from.
 """
 
 from __future__ import annotations
