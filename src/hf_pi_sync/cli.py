@@ -133,18 +133,26 @@ def push_cmd(
     with_auth: bool = typer.Option(False, "--with-auth", help="Include auth.json."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show plan, do nothing."),
     quiet: bool = typer.Option(
-        False, "--quiet", help="No output unless changes occur."
+        False, "--quiet", help="Suppress all output, even when changes occur."
     ),
 ) -> None:
     """Stage the shareable subset and upload to the bucket."""
     try:
         result = syncmod.cmd_push(
-            _resolve_bucket(bucket), with_auth=with_auth, dry_run=dry_run, quiet=quiet
+            _resolve_bucket(bucket), with_auth=with_auth, dry_run=dry_run
         )
-    except NotImplementedError:
-        typer.secho("push is not implemented yet.", fg=typer.colors.YELLOW)
+    except syncmod.NotLoggedInError as e:
+        typer.secho(str(e), fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
-    _print_result(result)
+    except syncmod.BucketMissingError as e:
+        typer.secho(str(e), fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    # Warn only when there are differences; stay quiet otherwise. A dry-run is
+    # an explicit preview request, so it always prints. --quiet suppresses all.
+    if quiet:
+        return
+    if dry_run or result.files > 0:
+        _print_result(result)
 
 
 @app.command("pull")

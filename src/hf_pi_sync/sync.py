@@ -32,6 +32,16 @@ class BucketExistsError(RuntimeError):
         super().__init__(f"bucket already exists: {bucket_id}")
 
 
+class BucketMissingError(RuntimeError):
+    """Raised when push/pull target a bucket that does not exist."""
+
+    def __init__(self, bucket_id: str) -> None:
+        self.bucket_id = bucket_id
+        super().__init__(
+            f"bucket does not exist: {bucket_id}. Run `hf pi-sync init` first."
+        )
+
+
 @dataclass
 class SyncResult:
     """Outcome of a sync run, for the CLI to print."""
@@ -159,10 +169,34 @@ def cmd_push(
     *,
     with_auth: bool = False,
     dry_run: bool = False,
-    quiet: bool = False,
 ) -> SyncResult:
-    """Stage shareable subset and upload to the bucket."""
-    raise NotImplementedError("push is not implemented yet")
+    """Stage the shareable subset and upload to the bucket.
+
+    Push requires the bucket to already exist (run ``init`` to create it).
+    The result's ``files`` field is the number of files actually uploaded; a
+    no-op run (remote already up to date) reports zero.
+    """
+    bk = Buckets()
+    namespace = _require_login(bk)
+    bucket_id = bk.resolve_bucket_id(bucket, namespace)
+    if not bk.bucket_exists(bucket_id):
+        raise BucketMissingError(bucket_id)
+
+    stage = _stage(with_auth)
+    try:
+        uploads = _uploads_from_plan(
+            bk.sync_to_bucket(stage, bucket_id, dry_run=dry_run)
+        )
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+    return SyncResult(
+        "push",
+        bucket_id,
+        uploads,
+        dry_run=dry_run,
+        message="pushed" if uploads else "nothing to sync",
+    )
 
 
 def cmd_pull(
@@ -189,6 +223,7 @@ def cmd_auto(
 __all__ = [
     "AgentDirMissing",
     "BucketExistsError",
+    "BucketMissingError",
     "DEFAULT_BUCKET_NAME",
     "Buckets",
     "NotLoggedInError",

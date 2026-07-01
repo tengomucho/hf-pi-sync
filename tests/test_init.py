@@ -1,10 +1,11 @@
 """Tests for the `init` command.
 
 Core behaviour is exercised against the live Hugging Face Buckets backend using
-a uniquely-named private dummy bucket that is deleted at teardown (even on
-failure). The two failure modes that cannot be reproduced over the network
-(not logged in, missing agent dir) are driven via ``monkeypatch`` on the live
-``Buckets`` class, without any fake plan/bucket classes.
+the shared ``dummy_bucket`` fixture (see conftest.py), which provisions a
+uniquely-named private bucket and deletes it at teardown (even on failure).
+The two failure modes that cannot be reproduced over the network (not logged
+in, missing agent dir) are driven via ``monkeypatch`` on the live ``Buckets``
+class, without any fake plan/bucket classes.
 
 These are integration tests: they require a valid Hugging Face login on the
 host (``hf auth login`` or ``HF_TOKEN``). They are skipped automatically when
@@ -13,9 +14,6 @@ network or credentials.
 """
 
 from __future__ import annotations
-
-import contextlib
-import uuid
 
 import pytest
 
@@ -27,27 +25,6 @@ from hf_pi_sync.sync import (
     NotLoggedInError,
     SyncResult,
 )
-
-
-@pytest.fixture
-def dummy_bucket():
-    """Provision a unique private bucket name; delete it after the test.
-
-    Skips the test when the host is not logged in to Hugging Face. Cleanup runs
-    even if the test fails or raises.
-    """
-    bk = Buckets()
-    try:
-        namespace = bk.whoami()
-    except Exception as exc:  # noqa: BLE001
-        pytest.skip(f"not logged in to Hugging Face: {exc}")
-    bucket_id = f"{namespace}/pi-sync-test-{uuid.uuid4().hex[:8]}"
-    assert not bk.bucket_exists(bucket_id), f"dummy bucket already exists: {bucket_id}"
-    try:
-        yield bucket_id
-    finally:
-        with contextlib.suppress(Exception):
-            bk.api.delete_bucket(bucket_id, missing_ok=True)
 
 
 def test_init_creates_bucket_and_pushes(dummy_bucket):
