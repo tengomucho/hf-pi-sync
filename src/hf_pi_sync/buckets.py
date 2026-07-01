@@ -11,6 +11,17 @@ from huggingface_hub import BucketFile, HfApi
 DEFAULT_BUCKET_NAME = "pi-config"
 
 
+def _mtime_to_epoch(mtime: object) -> float:
+    """Best-effort conversion of a bucket file mtime to a unix epoch float."""
+    if mtime is None:
+        return 0.0
+    if isinstance(mtime, (int, float)):
+        return float(mtime)
+    if hasattr(mtime, "timestamp"):  # datetime.datetime
+        return float(mtime.timestamp())  # type: ignore[union-attr]
+    return 0.0
+
+
 def _uri(bucket_id: str, prefix: str | None = None) -> str:
     """Return the ``hf://buckets/<namespace>/<name>[/<prefix>]`` URI."""
     uri = f"hf://buckets/{bucket_id.lstrip('/')}"
@@ -75,7 +86,7 @@ class Buckets:
                     RemoteFile(
                         path=item.path,
                         size=int(item.size or 0),
-                        mtime=float(item.mtime or 0),
+                        mtime=_mtime_to_epoch(item.mtime),
                     )
                 )
         return out

@@ -91,18 +91,37 @@ def init_cmd(
     private: bool = typer.Option(True, "--private/--public", help="Bucket visibility."),
     with_auth: bool = typer.Option(False, "--with-auth", help="Include auth.json."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show plan, do nothing."),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Do not prompt; overwrite an existing bucket."
+    ),
 ) -> None:
     """Login check, create/get private bucket, first push."""
+    kwargs: dict = {
+        "private": private,
+        "with_auth": with_auth,
+        "dry_run": dry_run,
+    }
     try:
-        result = syncmod.cmd_init(
-            _resolve_bucket(bucket),
-            private=private,
-            with_auth=with_auth,
-            dry_run=dry_run,
-        )
-    except NotImplementedError:
-        typer.secho("init is not implemented yet.", fg=typer.colors.YELLOW)
+        result = syncmod.cmd_init(_resolve_bucket(bucket), **kwargs)
+    except syncmod.NotLoggedInError as e:
+        typer.secho(str(e), fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
+    except syncmod.BucketExistsError as e:
+        if yes:
+            result = syncmod.cmd_init(
+                _resolve_bucket(bucket), **{**kwargs, "overwrite": True}
+            )
+        else:
+            if not typer.confirm(
+                f"Bucket '{e.bucket_id}' already exists. "
+                "Push local config (may overwrite remote)?",
+                default=False,
+            ):
+                typer.secho("aborted", fg=typer.colors.YELLOW)
+                raise typer.Exit(code=1) from None
+            result = syncmod.cmd_init(
+                _resolve_bucket(bucket), **{**kwargs, "overwrite": True}
+            )
     _print_result(result)
 
 
