@@ -176,10 +176,18 @@ def pull_cmd(
             mirror=mirror,
             dry_run=dry_run,
         )
-    except NotImplementedError:
-        typer.secho("pull is not implemented yet.", fg=typer.colors.YELLOW)
+    except syncmod.NotLoggedInError as e:
+        typer.secho(str(e), fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
-    _print_result(result)
+    except syncmod.BucketMissingError as e:
+        typer.secho(str(e), fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    except RuntimeError as e:  # e.g. `pi` command not found
+        typer.secho(str(e), fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    # Warn only on differences or install outcome; dry-run is an explicit preview.
+    if dry_run or result.files > 0 or "installed" in (result.message or ""):
+        _print_result(result)
 
 
 def _print_result(result: syncmod.SyncResult) -> None:

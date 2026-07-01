@@ -7,13 +7,14 @@ Call signatures are exposed so ``cli.py`` can wire them up.
 from __future__ import annotations
 
 import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .buckets import DEFAULT_BUCKET_NAME, Buckets
-from .staging import agent_dir, default_excludes
+from .staging import EXCLUDED_DIRS, EXCLUDED_FILES_DEFAULT, agent_dir, default_excludes
 
 
 class NotLoggedInError(RuntimeError):
@@ -85,6 +86,13 @@ def _uploads_from_plan(plan: Any) -> int:
         return 0
 
 
+def _downloads_from_plan(plan: Any) -> int:
+    try:
+        return int(plan.summary().get("downloads", 0))
+    except Exception:
+        return 0
+
+
 def _download_count_from_plan(plan: Any) -> int:
     try:
         return int(plan.summary().get("downloads", 0))
@@ -94,6 +102,93 @@ def _download_count_from_plan(plan: Any) -> int:
 
 def _count_files(root: Path) -> int:
     return sum(1 for p in root.rglob("*") if p.is_file())
+
+
+def _download_to_stage(
+    bucket_id: str, with_auth: bool, dry_run: bool
+) -> tuple[Path, int]:
+    """Download the bucket into a fresh temp staging dir.
+
+    Returns (stage_dir, downloads). Excluded paths are filtered out of the
+    download via the bucket-side exclude list so nothing unwanted lands in the
+    stage at all.
+    """
+    stage = Path(tempfile.mkdtemp(prefix="hf-pi-sync-pull-"))
+    bk = Buckets()
+    plan = bk.sync_from_bucket(
+        bucket_id,
+        stage,
+        exclude=list(default_excludes(with_auth=with_auth)),
+        dry_run=dry_run,
+    )
+    return stage, _downloads_from_plan(plan)
+
+
+def _merge_stage_into_agent(
+    stage: Path, with_auth: bool, mirror: bool
+) -> tuple[int, int]:
+    """Copy the staged bucket contents into the live agent dir.
+
+    Returns (files_copied, files_deleted). Excluded paths are never copied over
+    and never deleted even in mirror mode, so ``npm/``, ``bin/``, ``sessions/``
+    and (by default) ``auth.json`` are preserved untouched on the local side.
+    """
+    dst = agent_dir()
+    if not dst.is_dir():
+        raise AgentDirMissing(str(dst))
+    excluded_dirs = set(EXCLUDED_DIRS)
+    excluded_files = set(EXCLUDED_FILES_DEFAULT if not with_auth else ())
+
+    copied = 0
+    deleted = 0
+
+    for root, dirnames, filenames in shutil.os.walk(stage):
+        # prune excluded dirs so we don't recurse into them
+        dirnames[:] = [d for d in dirnames if d not in excluded_dirs]
+        rel_root = Path(root).relative_to(stage)
+        for name in dirnames:
+            (dst / rel_root / name).mkdir(parents=True, exist_ok=True)
+        for name in filenames:
+            if name in excluded_files:
+                continue
+            src_file = Path(root) / name
+            dst_file = dst / rel_root / name
+            dst_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_file, dst_file)
+            copied += 1
+
+    if mirror:
+        bucket_paths = {p.relative_to(stage) for p in stage.rglob("*") if p.is_file()}
+        bucket_paths = {
+            p
+            for p in bucket_paths
+            if p.parts[0] not in excluded_dirs
+            and (len(p.parts) > 1 or p.name not in excluded_files)
+        }
+        for root, _dirnames, filenames in shutil.os.walk(dst):
+            rel_root = Path(root).relative_to(dst)
+            if rel_root.parts and rel_root.parts[0] in excluded_dirs:
+                continue
+            for name in filenames:
+                if name in excluded_files:
+                    continue
+                if (rel_root / name) not in bucket_paths:
+                    Path(root, name).unlink()
+                    deleted += 1
+
+    return copied, deleted
+
+
+def _pi_install(really_run: bool) -> None:
+    """Rebuild ~/.pi/agent/npm/ from settings.json packages[]."""
+    if not really_run:
+        return
+    try:
+        subprocess.run(["pi", "install"], check=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "`pi` command not found on PATH. Run `npm i -g @earendil-works/pi-coding-agent` first."
+        ) from exc
 
 
 def cmd_init(
@@ -206,8 +301,51 @@ def cmd_pull(
     mirror: bool = False,
     dry_run: bool = False,
 ) -> SyncResult:
-    """Download bucket, merge into ~/.pi/agent/, run `pi install`."""
-    raise NotImplementedError("pull is not implemented yet")
+    """Download bucket, merge into ~/.pi/agent/, run ``pi install``.
+
+    Pull requires the bucket to already exist (run ``init`` to create it). The
+    merge is additive by default (never deletes local files); ``mirror`` removes
+    local shareable files not present in the bucket. Excluded paths
+    (``npm/``, ``bin/``, ``sessions/``, and by default ``auth.json``) are never
+    overwritten or deleted. After merge, ``pi install`` rebuilds the local
+    ``npm/`` tree from ``settings.json`` (skipped on dry-run).
+
+    The result ``files`` field is the number of files downloaded; ``message``
+    carries the local merge outcome and install status.
+    """
+    bk = Buckets()
+    namespace = _require_login(bk)
+    bucket_id = bk.resolve_bucket_id(bucket, namespace)
+    if not bk.bucket_exists(bucket_id):
+        raise BucketMissingError(bucket_id)
+
+    stage, downloads = _download_to_stage(bucket_id, with_auth, dry_run)
+    copied, deleted = 0, 0
+    installed = False
+    try:
+        if not dry_run:
+            copied, deleted = _merge_stage_into_agent(stage, with_auth, mirror)
+            _pi_install(really_run=True)
+            installed = True
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+    if dry_run:
+        message = "would pull" if downloads else "nothing to pull"
+    else:
+        parts = [f"copied {copied}"]
+        if mirror and deleted:
+            parts.append(f"deleted {deleted}")
+        parts.append("installed" if installed else "install skipped")
+        message = ", ".join(parts)
+
+    return SyncResult(
+        "pull",
+        bucket_id,
+        downloads,
+        dry_run=dry_run,
+        message=message,
+    )
 
 
 def cmd_auto(
