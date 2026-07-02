@@ -98,7 +98,7 @@ def _seed_bucket_with_settings(dummy_bucket, text):
 
 
 def test_pull_into_fresh_agent_dir_creates_it(dummy_bucket, tmp_path, monkeypatch):
-    # Simulate a brand-new VM: ~/.pi/agent does not exist yet.
+    # Simulate a brand-new machine: ~/.pi/agent does not exist yet.
     fresh = tmp_path / "fresh-home"
     fresh.mkdir()
     monkeypatch.setattr(syncmod, "agent_dir", lambda: fresh / ".pi" / "agent")

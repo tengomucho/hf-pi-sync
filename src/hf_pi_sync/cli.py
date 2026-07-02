@@ -27,7 +27,7 @@ from . import sync as syncmod
 
 app = typer.Typer(
     name="pi-sync",
-    help="Sync pi agent config across VMs via Hugging Face Buckets.",
+    help="Sync pi agent config across machines via Hugging Face Buckets.",
     no_args_is_help=False,
     add_completion=False,
 )
@@ -54,7 +54,7 @@ def auto_sync_default(
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be synced."),
     version: bool = typer.Option(False, "--version", help="Print version and exit."),
 ) -> None:
-    """hf pi-sync: sync pi agent config across VMs via Hugging Face Buckets."""
+    """hf pi-sync: sync pi agent config across machines via Hugging Face Buckets."""
     if version:  # pragma: no cover
         typer.echo(f"hf-pi-sync {__version__}")
         raise typer.Exit

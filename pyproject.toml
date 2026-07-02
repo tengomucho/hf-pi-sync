@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "hf-pi-sync"
 version = "0.1.0"
-description = "hf CLI extension to sync pi agent config across VMs via Hugging Face Buckets."
+description = "hf CLI extension to sync pi agent config across machines via Hugging Face Buckets."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

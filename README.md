@@ -52,7 +52,7 @@ hf extensions install <owner>/hf-pi-sync
 
 ## Backend notes
 
-Buckets are **non-versioned, last-writer-wins** storage. This is fine when one machine is the source of truth and others pull. If multiple VMs push concurrently they may clobber each other; `push` warns when there are differences.
+Buckets are **non-versioned, last-writer-wins** storage. This is fine when one machine is the source of truth and others pull. If multiple machines push concurrently they may clobber each other; `push` warns when there are differences.
 
 ## Headless-safety note for contributors
 
