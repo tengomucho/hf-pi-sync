@@ -418,7 +418,16 @@ def cmd_auto(
     if not bk.bucket_exists(bucket_id):
         raise BucketMissingError(bucket_id)
 
-    local_latest = _local_latest_mtime(with_auth)
+    try:
+        local_latest = _local_latest_mtime(with_auth)
+    except AgentDirMissing:
+        # Fresh machine: no ~/.pi/agent/ yet. The bucket is the only source
+        # of truth, so pull (which creates the dir) instead of erroring out.
+        action = "auto-pull"
+        return cmd_pull(bucket_id, with_auth=with_auth, dry_run=dry_run).with_action(
+            action
+        )
+
     remote_latest = _remote_latest_mtime(bk, bucket_id)
 
     if local_latest >= remote_latest:

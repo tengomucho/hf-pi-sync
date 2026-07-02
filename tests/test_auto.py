@@ -70,6 +70,30 @@ def test_auto_pulls_when_remote_newer(dummy_bucket, fake_agent):
     assert r.files >= 1  # settings.json was re-downloaded from the bucket
 
 
+def test_auto_pulls_when_local_agent_dir_missing(dummy_bucket, tmp_path, monkeypatch):
+    """Fresh machine with no ~/.pi/agent/: auto-sync should pull, not error."""
+    # Seed the bucket from a throwaway existing agent so it has data to pull.
+    seed = tmp_path / "seed-agent"
+    seed.mkdir()
+    (seed / "settings.json").write_text('{"defaultModel": "zai-org/GLM-5.2"}')
+    monkeypatch.setattr(syncmod, "agent_dir", lambda: seed)
+    monkeypatch.setattr(syncmod, "_pi_install", lambda really_run: None)
+    bk = Buckets()
+    bk.create_bucket(dummy_bucket)
+    syncmod.cmd_push(bucket=dummy_bucket)
+
+    # Fresh machine: agent dir does not exist yet.
+    fresh = tmp_path / "fresh-agent"  # intentionally not created
+    monkeypatch.setattr(syncmod, "agent_dir", lambda: fresh)
+
+    r = syncmod.cmd_auto(bucket=dummy_bucket)
+
+    assert r.action == "auto-pull"
+    assert r.files >= 1  # settings.json pulled down
+    assert fresh.is_dir()  # pull created the dir
+    assert (fresh / "settings.json").exists()
+
+
 def test_auto_dry_run_reports_direction_without_executing(dummy_bucket, fake_agent):
     bk = Buckets()
     bk.create_bucket(dummy_bucket)
