@@ -8,8 +8,17 @@ import uuid
 
 import pytest
 
+from hf_pi_sync import lastsync
 from hf_pi_sync import sync as syncmod
 from hf_pi_sync.buckets import Buckets
+
+
+@pytest.fixture(autouse=True)
+def _isolated_marker_dir(tmp_path, monkeypatch):
+    """Redirect the last-sync marker to a tmp path so tests never touch the
+    real ``~/.pi/.pi-sync/last-sync``."""
+    monkeypatch.setattr(lastsync, "_MARKER_DIR", tmp_path / "marker")
+    monkeypatch.setattr(lastsync, "_MARKER_FILE", tmp_path / "marker" / "last-sync")
 
 
 @pytest.fixture

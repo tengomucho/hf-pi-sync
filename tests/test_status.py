@@ -12,6 +12,7 @@ import os
 
 from hf_pi_sync import sync as syncmod
 from hf_pi_sync.buckets import Buckets
+from hf_pi_sync.lastsync import write_last_sync
 from hf_pi_sync.sync import StatusResult
 
 FUTURE = 4_000_000_000.0  # year 2096
@@ -47,8 +48,8 @@ def test_status_in_sync_after_push(dummy_bucket, fake_agent):
 
 def test_status_local_newer(dummy_bucket, fake_agent):
     Buckets().create_bucket(dummy_bucket)
-    syncmod.cmd_push(bucket=dummy_bucket)
-    _set_mtime(fake_agent / "settings.json", FUTURE)
+    syncmod.cmd_push(bucket=dummy_bucket)  # marker: local = L0, remote = T0
+    _set_mtime(fake_agent / "settings.json", FUTURE)  # local advanced past marker
 
     r = syncmod.cmd_status(bucket=dummy_bucket)
 
@@ -60,8 +61,11 @@ def test_status_local_newer(dummy_bucket, fake_agent):
 
 def test_status_remote_newer(dummy_bucket, fake_agent):
     Buckets().create_bucket(dummy_bucket)
-    syncmod.cmd_push(bucket=dummy_bucket)
-    _set_mtime(fake_agent / "settings.json", PAST)
+    syncmod.cmd_push(bucket=dummy_bucket)  # remote = T0, marker records remote = T0
+    # Simulate another machine having pushed newer config: this machine's
+    # marker still remembers an older remote, so the bucket looks newer.
+    local_now = max(p.stat().st_mtime for p in fake_agent.rglob("*") if p.is_file())
+    write_last_sync(dummy_bucket, local_mtime=local_now, remote_mtime=PAST)
 
     r = syncmod.cmd_status(bucket=dummy_bucket)
 
