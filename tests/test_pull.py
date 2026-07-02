@@ -21,30 +21,6 @@ from hf_pi_sync.buckets import Buckets
 from hf_pi_sync.sync import BucketMissingError, SyncResult
 
 
-@pytest.fixture
-def fake_agent(tmp_path, monkeypatch):
-    """A throwaway agent dir with settings.json + an excluded npm/ tree."""
-    ag = tmp_path / "agent"
-    ag.mkdir()
-    (ag / "settings.json").write_text(
-        json.dumps(
-            {
-                "defaultProvider": "huggingface",
-                "defaultModel": "zai-org/GLM-5.2",
-                "packages": ["npm:pi-web-access"],
-            }
-        )
-    )
-    (ag / "npm").mkdir()
-    (ag / "npm" / "package.json").write_text("{}")
-    (ag / "sessions").mkdir()
-    (ag / "sessions" / "local.jsonl").write_text("[]")
-    (ag / "auth.json").write_text('{"token":"secret"}')
-    monkeypatch.setattr(syncmod, "agent_dir", lambda: ag)
-    monkeypatch.setattr(syncmod, "_pi_install", lambda really_run: None)
-    return ag
-
-
 def _files(ag) -> set[str]:
     return {str(p.relative_to(ag)) for p in ag.rglob("*") if p.is_file()}
 

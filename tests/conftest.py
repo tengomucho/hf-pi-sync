@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import uuid
 
 import pytest
 
+from hf_pi_sync import sync as syncmod
 from hf_pi_sync.buckets import Buckets
 
 
@@ -29,3 +31,31 @@ def dummy_bucket():
     finally:
         with contextlib.suppress(Exception):
             bk.api.delete_bucket(bucket_id, missing_ok=True)
+
+
+@pytest.fixture
+def fake_agent(tmp_path, monkeypatch):
+    """A throwaway agent dir with settings.json + an excluded npm/ tree.
+
+    Redirects ``agent_dir`` to a tmp path and stubs out ``pi update --extensions``
+    so the real ``~/.pi/agent/`` is never touched.
+    """
+    ag = tmp_path / "agent"
+    ag.mkdir()
+    (ag / "settings.json").write_text(
+        json.dumps(
+            {
+                "defaultProvider": "huggingface",
+                "defaultModel": "zai-org/GLM-5.2",
+                "packages": ["npm:pi-web-access"],
+            }
+        )
+    )
+    (ag / "npm").mkdir()
+    (ag / "npm" / "package.json").write_text("{}")
+    (ag / "sessions").mkdir()
+    (ag / "sessions" / "local.jsonl").write_text("[]")
+    (ag / "auth.json").write_text('{"token":"secret"}')
+    monkeypatch.setattr(syncmod, "agent_dir", lambda: ag)
+    monkeypatch.setattr(syncmod, "_pi_install", lambda really_run: None)
+    return ag

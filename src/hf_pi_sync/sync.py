@@ -383,6 +383,23 @@ def _remote_latest_mtime(bk: Buckets, bucket_id: str) -> float:
     return max(mtimes) if mtimes else 0.0
 
 
+# Bucket mtimes are stored at millisecond precision and some filesystems have
+# coarse (>=1s) mtime resolution, so exact equality is unreliable for deciding
+# "no diff". A small tolerance keeps the in-sync check robust.
+_MTIME_TOLERANCE = 2.0
+
+
+@dataclass
+class StatusResult:
+    """Outcome of a status check, for the CLI to print."""
+
+    bucket_id: str
+    initialized: bool
+    diff: str  # "local-newer" | "remote-newer" | "none" | "n/a"
+    message: str
+    hint: str = ""
+
+
 def cmd_auto(
     bucket: str | None = None,
     *,
@@ -413,6 +430,67 @@ def cmd_auto(
     return cmd_pull(bucket_id, with_auth=with_auth, dry_run=dry_run).with_action(action)
 
 
+def cmd_status(
+    bucket: str | None = None,
+    *,
+    with_auth: bool = False,
+) -> StatusResult:
+    """Report whether the bucket is initialized and which side is newer.
+
+    Read-only. When both sides are initialized, compares the latest mtime of
+    the shareable subset locally vs in the bucket. If they differ, suggests
+    running ``hf pi-sync`` (auto-sync) to synchronize.
+    """
+    bk = Buckets()
+    namespace = _require_login(bk)
+    bucket_id = bk.resolve_bucket_id(bucket, namespace)
+
+    if not bk.bucket_exists(bucket_id):
+        return StatusResult(
+            bucket_id,
+            initialized=False,
+            diff="n/a",
+            message="bucket is not initialized",
+            hint="run `hf pi-sync init`",
+        )
+
+    try:
+        local_latest = _local_latest_mtime(with_auth)
+    except AgentDirMissing:
+        return StatusResult(
+            bucket_id,
+            initialized=True,
+            diff="remote-newer",
+            message="no local pi config; bucket has data",
+            hint="run `hf pi-sync pull`",
+        )
+
+    remote_latest = _remote_latest_mtime(bk, bucket_id)
+
+    if local_latest - remote_latest > _MTIME_TOLERANCE:
+        return StatusResult(
+            bucket_id,
+            initialized=True,
+            diff="local-newer",
+            message="local config is newer than remote",
+            hint="run `hf pi-sync` to push",
+        )
+    if remote_latest - local_latest > _MTIME_TOLERANCE:
+        return StatusResult(
+            bucket_id,
+            initialized=True,
+            diff="remote-newer",
+            message="remote config is newer than local",
+            hint="run `hf pi-sync` to pull",
+        )
+    return StatusResult(
+        bucket_id,
+        initialized=True,
+        diff="none",
+        message="local and remote are in sync",
+    )
+
+
 __all__ = [
     "AgentDirMissing",
     "BucketExistsError",
@@ -420,9 +498,11 @@ __all__ = [
     "DEFAULT_BUCKET_NAME",
     "Buckets",
     "NotLoggedInError",
+    "StatusResult",
     "SyncResult",
     "cmd_auto",
     "cmd_init",
     "cmd_pull",
     "cmd_push",
+    "cmd_status",
 ]

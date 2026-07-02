@@ -194,6 +194,36 @@ def pull_cmd(
         _print_result(result)
 
 
+@app.command("status")
+def status_cmd(
+    bucket: str = typer.Option(
+        None, "--bucket", envvar="PI_SYNC_BUCKET", help="Bucket id <user>/<name>."
+    ),
+    with_auth: bool = typer.Option(False, "--with-auth", help="Include auth.json."),
+) -> None:
+    """Show bucket init state and whether local or remote is newer."""
+    try:
+        result = syncmod.cmd_status(_resolve_bucket(bucket), with_auth=with_auth)
+    except syncmod.NotLoggedInError as e:
+        typer.secho(str(e), fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    _print_status(result)
+
+
+def _print_status(result: syncmod.StatusResult) -> None:
+    typer.echo(f"bucket: {result.bucket_id}")
+    init_str = "yes" if result.initialized else "no"
+    typer.echo(f"initialized: {init_str}")
+    if result.diff == "none":
+        typer.secho(f"diff: none ({result.message})", fg=typer.colors.GREEN)
+    elif result.diff in ("local-newer", "remote-newer"):
+        typer.secho(f"diff: {result.message}", fg=typer.colors.YELLOW)
+    else:
+        typer.echo(f"diff: {result.message}")
+    if result.hint:
+        typer.secho(f"hint: {result.hint}", fg=typer.colors.CYAN)
+
+
 def _print_result(result: syncmod.SyncResult) -> None:
     if not result:
         return
