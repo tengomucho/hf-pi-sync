@@ -187,3 +187,34 @@ def test_pull_mirror_keeps_local_only_memory_files(dummy_bucket, fake_agent):
     assert "memory/daily/2026-07-03.md" in fs  # protected from mirror delete
     assert "memory/SCRATCHPAD.md" in fs  # protected from mirror delete
     assert "memory/MEMORY.md" in fs  # synced file present (in bucket)
+
+
+def test_pull_brings_top_level_pi_json(dummy_bucket, fake_agent):
+    # fake_agent seeds ~/.pi/web-search.json with {"provider": "brave", ...}
+    Buckets().create_bucket(dummy_bucket)
+    syncmod.cmd_push(bucket=dummy_bucket)
+    remote = (fake_agent.parent / "web-search.json").read_text()
+    # corrupt the local top-level json, then pull it back from the bucket
+    (fake_agent.parent / "web-search.json").write_text("{\"provider\": \"local\"}")
+
+    r = syncmod.cmd_pull(bucket=dummy_bucket)
+
+    assert r.files >= 1
+    assert (fake_agent.parent / "web-search.json").read_text() == remote
+    # non-json sibling is untouched by pull
+    assert (fake_agent.parent / "notes.txt").read_text() == "not synced"
+
+
+def test_pull_mirror_deletes_local_top_level_json(dummy_bucket, fake_agent):
+    # push puts _pi-root/web-search.json in the bucket; a local-only extra.json
+    # must be removed by --mirror, while the non-json notes.txt is left alone.
+    Buckets().create_bucket(dummy_bucket)
+    syncmod.cmd_push(bucket=dummy_bucket)
+    (fake_agent.parent / "extra.json").write_text("{}")
+    assert (fake_agent.parent / "extra.json").is_file()
+
+    syncmod.cmd_pull(bucket=dummy_bucket, mirror=True)
+
+    assert not (fake_agent.parent / "extra.json").is_file()  # mirror removed
+    assert (fake_agent.parent / "web-search.json").is_file()  # still present
+    assert (fake_agent.parent / "notes.txt").is_file()  # non-json untouched

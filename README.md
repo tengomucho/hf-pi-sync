@@ -31,6 +31,8 @@ hf pi-sync           # auto-sync: compare mtimes and push or pull accordingly
 | `memory/` (except `MEMORY.md`) | ❌ | Local per-machine: daily logs, scratchpad, index DBs |
 | `auth.json` | ❌ by default | Credentials — opt in with `--with-auth` |
 
+Top-level `~/.pi/*.json` config files (outside `~/.pi/agent/`, e.g. `web-search.json`) are also synced — they are stored in the bucket under a reserved `_pi-root/` prefix so they never collide with agent files. Non-json siblings are ignored.
+
 ## Bootstrap requirement
 
 You will need the `hf` CLI version >= 1.16, check [here](https://huggingface.co/docs/huggingface_hub/en/guides/cli) on how to install it.

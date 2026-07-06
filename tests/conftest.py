@@ -71,5 +71,12 @@ def fake_agent(tmp_path, monkeypatch):
     (ag / "memory" / "daily" / "2026-07-03.md").write_text("local daily log\n")
     (ag / "memory" / "SCRATCHPAD.md").write_text("- [ ] local todo\n")
     monkeypatch.setattr(syncmod, "agent_dir", lambda: ag)
+    monkeypatch.setattr(syncmod, "pi_dir", lambda: ag.parent)
     monkeypatch.setattr(syncmod, "_pi_install", lambda really_run: None)
+    # Top-level ~/.pi/*.json config files (outside the agent dir) are synced
+    # too; non-json siblings must be ignored.
+    (ag.parent / "web-search.json").write_text(
+        json.dumps({"provider": "brave", "limit": 5})
+    )
+    (ag.parent / "notes.txt").write_text("not synced")
     return ag

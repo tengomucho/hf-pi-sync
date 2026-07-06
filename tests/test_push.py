@@ -78,3 +78,15 @@ def test_push_syncs_only_memory_md(dummy_bucket):
     assert not any(p.startswith("memory/daily/") for p in files)
     assert "memory/SCRATCHPAD.md" not in files
     assert not any(p == "memory/daily" for p in files)
+
+
+def test_push_syncs_top_level_pi_json(dummy_bucket, fake_agent):
+    # fake_agent seeds ~/.pi/web-search.json (and a non-json notes.txt)
+    Buckets().create_bucket(dummy_bucket)
+
+    syncmod.cmd_push(bucket=dummy_bucket)
+
+    files = _files(dummy_bucket)
+    assert "_pi-root/web-search.json" in files
+    # non-json siblings at ~/.pi/ are not synced
+    assert not any(p == "notes.txt" or p.endswith("/notes.txt") for p in files)

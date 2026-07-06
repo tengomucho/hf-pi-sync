@@ -19,10 +19,12 @@ from .lastsync import read_last_sync, write_last_sync
 from .staging import (
     EXCLUDED_DIRS,
     EXCLUDED_FILES_DEFAULT,
+    PI_ROOT_PREFIX,
     agent_dir,
     build_stage_ignore,
     default_excludes,
     is_local_only_memory,
+    pi_dir,
 )
 
 
@@ -85,6 +87,21 @@ def _agent_dir() -> Path:
     return agent_dir()
 
 
+def _pi_root_jsons() -> list[Path]:
+    """Top-level ``*.json`` files in ``~/.pi/`` (e.g. ``web-search.json``)."""
+    root = pi_dir()
+    if not root.is_dir():
+        return []
+    return sorted(p for p in root.iterdir() if p.is_file() and p.suffix == ".json")
+
+
+def _local_path_for(rel: Path) -> Path:
+    """Live destination for a stage/bucket-relative file path."""
+    if rel.parts and rel.parts[0] == PI_ROOT_PREFIX:
+        return pi_dir() / Path(*rel.parts[1:])
+    return agent_dir() / rel
+
+
 def _stage(with_auth: bool) -> Path:
     """Copy the shareable subset of the agent dir into a fresh temp dir."""
     src = agent_dir()
@@ -94,6 +111,16 @@ def _stage(with_auth: bool) -> Path:
     shutil.copytree(
         src, stage, dirs_exist_ok=True, ignore=build_stage_ignore(with_auth, src)
     )
+    # Top-level ~/.pi/*.json config files live outside the agent dir; stage them
+    # under a reserved prefix so they share the bucket without colliding with
+    # agent files (which are stored at flat bucket paths).
+    excluded_files = set(EXCLUDED_FILES_DEFAULT if not with_auth else ())
+    root_jsons = [p for p in _pi_root_jsons() if p.name not in excluded_files]
+    if root_jsons:
+        prefix = stage / PI_ROOT_PREFIX
+        prefix.mkdir()
+        for p in root_jsons:
+            shutil.copy2(p, prefix / p.name)
     return stage
 
 
@@ -164,14 +191,15 @@ def _merge_stage_into_agent(
         dirnames[:] = [d for d in dirnames if d not in excluded_dirs]
         rel_root = Path(root).relative_to(stage)
         for name in dirnames:
-            (dst / rel_root / name).mkdir(parents=True, exist_ok=True)
+            # _pi-root/ is a stage-only namespace, not a real agent dir
+            _local_path_for(rel_root / name).mkdir(parents=True, exist_ok=True)
         for name in filenames:
             if name in excluded_files:
                 continue
             if is_local_only_memory(rel_root / name):
                 continue
             src_file = Path(root) / name
-            dst_file = dst / rel_root / name
+            dst_file = _local_path_for(rel_root / name)
             dst_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_file, dst_file)
             copied += 1
@@ -196,6 +224,13 @@ def _merge_stage_into_agent(
                 if (rel_root / name) not in bucket_paths:
                     Path(root, name).unlink()
                     deleted += 1
+        # mirror-delete top-level ~/.pi/*.json not present in the bucket
+        for p in _pi_root_jsons():
+            if p.name in excluded_files:
+                continue
+            if Path(PI_ROOT_PREFIX) / p.name not in bucket_paths:
+                p.unlink()
+                deleted += 1
 
     return copied, deleted
 
@@ -209,7 +244,6 @@ def _apply_bucket_mtimes(bk: Buckets, bucket_id: str, with_auth: bool) -> None:
     own mtimes keeps local and remote aligned so a post-pull push is a true
     no-op. Excluded paths are skipped (they are not in the bucket anyway).
     """
-    dst = agent_dir()
     excluded_dirs = set(EXCLUDED_DIRS)
     excluded_files = set(EXCLUDED_FILES_DEFAULT if not with_auth else ())
     for rf in bk.list_files(bucket_id):
@@ -218,7 +252,7 @@ def _apply_bucket_mtimes(bk: Buckets, bucket_id: str, with_auth: bool) -> None:
             continue
         if rel.name in excluded_files:
             continue
-        local = dst / rel
+        local = _local_path_for(rel)
         if local.is_file() and rf.mtime > 0:
             os.utime(local, (rf.mtime, rf.mtime))
 

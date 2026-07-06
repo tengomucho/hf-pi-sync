@@ -1,4 +1,4 @@
-"""Staging helpers: what to sync and what to exclude under ~/.pi/agent/."""
+"""Staging helpers: what to sync and what to exclude under ~/.pi/."""
 
 from __future__ import annotations
 
@@ -22,6 +22,18 @@ MEMORY_DIR_NAME = "memory"
 MEMORY_SYNCED_FILE = "MEMORY.md"
 
 AGENT_DIR_NAME = ".pi/agent"
+
+# Top-level JSON config files directly in ~/.pi/ (outside ~/.pi/agent/) are
+# synced too -- e.g. extension configs like ``web-search.json``. They are stored
+# in the bucket under ``PI_ROOT_PREFIX`` so they never collide with agent
+# files, which live at flat bucket paths relative to ~/.pi/agent/.
+PI_DIR_NAME = ".pi"
+PI_ROOT_PREFIX = "_pi-root"
+
+
+def pi_dir() -> Path:
+    """Return the pi config directory (~/.pi/)."""
+    return Path.home() / PI_DIR_NAME
 
 
 def agent_dir() -> Path:
