@@ -16,7 +16,14 @@ from typing import Any
 
 from .buckets import DEFAULT_BUCKET_NAME, Buckets
 from .lastsync import read_last_sync, write_last_sync
-from .staging import EXCLUDED_DIRS, EXCLUDED_FILES_DEFAULT, agent_dir, default_excludes
+from .staging import (
+    EXCLUDED_DIRS,
+    EXCLUDED_FILES_DEFAULT,
+    agent_dir,
+    build_stage_ignore,
+    default_excludes,
+    is_local_only_memory,
+)
 
 
 class NotLoggedInError(RuntimeError):
@@ -83,10 +90,9 @@ def _stage(with_auth: bool) -> Path:
     src = agent_dir()
     if not src.is_dir():
         raise AgentDirMissing(str(src))
-    patterns = default_excludes(with_auth=with_auth)
     stage = Path(tempfile.mkdtemp(prefix="hf-pi-sync-"))
     shutil.copytree(
-        src, stage, dirs_exist_ok=True, ignore=shutil.ignore_patterns(*patterns)
+        src, stage, dirs_exist_ok=True, ignore=build_stage_ignore(with_auth, src)
     )
     return stage
 
@@ -162,6 +168,8 @@ def _merge_stage_into_agent(
         for name in filenames:
             if name in excluded_files:
                 continue
+            if is_local_only_memory(rel_root / name):
+                continue
             src_file = Path(root) / name
             dst_file = dst / rel_root / name
             dst_file.parent.mkdir(parents=True, exist_ok=True)
@@ -182,6 +190,8 @@ def _merge_stage_into_agent(
                 continue
             for name in filenames:
                 if name in excluded_files:
+                    continue
+                if is_local_only_memory(rel_root / name):
                     continue
                 if (rel_root / name) not in bucket_paths:
                     Path(root, name).unlink()

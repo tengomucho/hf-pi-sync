@@ -136,6 +136,10 @@ def test_pull_mirror_deletes_local_only_shareable(dummy_bucket, fake_agent):
     assert "deleted" in r.message
 
 
+def _bucket_files(bucket_id: str) -> list[str]:
+    return [f.path for f in Buckets().list_files(bucket_id)]
+
+
 def test_pull_with_auth_restores_auth_json(dummy_bucket, fake_agent, monkeypatch):
     Buckets().create_bucket(dummy_bucket)
     # push auth.json into the bucket, then wipe locally, then pull it back
@@ -146,3 +150,40 @@ def test_pull_with_auth_restores_auth_json(dummy_bucket, fake_agent, monkeypatch
 
     assert "auth.json" in _files(fake_agent)
     assert (fake_agent / "auth.json").read_text() == '{"token":"secret"}'
+
+
+def test_pull_merge_brings_memory_md_without_daily(dummy_bucket, fake_agent):
+    # fake_agent has memory/MEMORY.md and memory/daily/2026-07-03.md locally.
+    # Push uploads only MEMORY.md. Then corrupt local MEMORY.md and pull.
+    Buckets().create_bucket(dummy_bucket)
+    syncmod.cmd_push(bucket=dummy_bucket)
+    bucket_files = _bucket_files(dummy_bucket)
+    assert "memory/MEMORY.md" in bucket_files
+    assert not any(p.startswith("memory/daily/") for p in bucket_files)
+    remote_md = (fake_agent / "memory" / "MEMORY.md").read_text()
+    (fake_agent / "memory" / "MEMORY.md").write_text("# corrupted\n")
+
+    r = syncmod.cmd_pull(bucket=dummy_bucket)
+
+    assert r.files >= 1
+    fs = _files(fake_agent)
+    # MEMORY.md is overwritten with the pulled (== pushed) content
+    assert (fake_agent / "memory" / "MEMORY.md").read_text() == remote_md
+    # local daily log survives (never synced, additive merge)
+    assert "memory/daily/2026-07-03.md" in fs
+    assert "memory/SCRATCHPAD.md" in fs
+
+
+def test_pull_mirror_keeps_local_only_memory_files(dummy_bucket, fake_agent):
+    # mirror mode must NOT delete memory/daily/* or memory/SCRATCHPAD.md locally
+    Buckets().create_bucket(dummy_bucket)
+    syncmod.cmd_push(bucket=dummy_bucket)  # bucket has memory/MEMORY.md only
+    assert "memory/daily/2026-07-03.md" in _files(fake_agent)
+    assert "memory/SCRATCHPAD.md" in _files(fake_agent)
+
+    syncmod.cmd_pull(bucket=dummy_bucket, mirror=True)
+
+    fs = _files(fake_agent)
+    assert "memory/daily/2026-07-03.md" in fs  # protected from mirror delete
+    assert "memory/SCRATCHPAD.md" in fs  # protected from mirror delete
+    assert "memory/MEMORY.md" in fs  # synced file present (in bucket)

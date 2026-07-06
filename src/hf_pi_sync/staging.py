@@ -12,6 +12,15 @@ from pathlib import Path
 EXCLUDED_DIRS: tuple[str, ...] = ("npm", "bin", "sessions")
 EXCLUDED_FILES_DEFAULT: tuple[str, ...] = ("auth.json",)
 
+# memory/ is a partially-synced directory: only MEMORY.md is shareable.
+# Everything else under memory/ (daily logs, scratchpad, index DBs) is
+# local-only, like sessions/. Filtered by a custom ignore callable in _stage()
+# and by _is_local_only_memory() in the merge path -- NOT via default_excludes(),
+# which is a flat basename list that cannot exclude memory/* while keeping
+# memory/MEMORY.md.
+MEMORY_DIR_NAME = "memory"
+MEMORY_SYNCED_FILE = "MEMORY.md"
+
 AGENT_DIR_NAME = ".pi/agent"
 
 
@@ -29,3 +38,41 @@ def default_excludes(with_auth: bool = False) -> tuple[str, ...]:
     if with_auth:
         return EXCLUDED_DIRS
     return EXCLUDED_DIRS + EXCLUDED_FILES_DEFAULT
+
+
+def build_stage_ignore(with_auth: bool, root: Path):
+    """Build a ``shutil.copytree`` ignore callable for the agent root.
+
+    Prunes ``EXCLUDED_DIRS``/``EXCLUDED_FILES`` by basename, and -- only at the
+    top-level ``memory/`` directory -- prunes every entry except
+    ``MEMORY.md``. This stops ``memory/daily/`` and other local-only files from
+    being staged, while keeping ``memory/MEMORY.md`` shareable.
+    """
+    excluded_dirs = set(EXCLUDED_DIRS)
+    excluded_files = set(EXCLUDED_FILES_DEFAULT if not with_auth else ())
+    memory_root = root / MEMORY_DIR_NAME
+
+    def _ignore(dir_path, names):
+        out = set()
+        is_memory = Path(dir_path) == memory_root
+        for n in names:
+            excluded = n in excluded_dirs or n in excluded_files
+            local_only_memory = is_memory and n != MEMORY_SYNCED_FILE
+            if excluded or local_only_memory:
+                out.add(n)
+        return out
+
+    return _ignore
+
+
+def is_local_only_memory(rel: Path) -> bool:
+    """True for paths under ``memory/`` that are not ``memory/MEMORY.md``.
+
+    Such files are local-only (daily logs, scratchpad, index DBs): never copied
+    back to the agent dir on pull, and never deleted in mirror mode.
+    """
+    return bool(
+        rel.parts
+        and rel.parts[0] == MEMORY_DIR_NAME
+        and not (len(rel.parts) == 2 and rel.parts[1] == MEMORY_SYNCED_FILE)
+    )

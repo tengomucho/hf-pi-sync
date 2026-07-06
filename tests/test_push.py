@@ -65,3 +65,16 @@ def test_push_with_auth_includes_auth_json(dummy_bucket):
     syncmod.cmd_push(bucket=dummy_bucket, with_auth=True)
 
     assert "auth.json" in _files(dummy_bucket)
+
+
+def test_push_syncs_only_memory_md(dummy_bucket):
+    # fake_agent has memory/MEMORY.md plus memory/daily/*.md and SCRATCHPAD.md
+    Buckets().create_bucket(dummy_bucket)
+
+    syncmod.cmd_push(bucket=dummy_bucket)
+
+    files = _files(dummy_bucket)
+    assert "memory/MEMORY.md" in files
+    assert not any(p.startswith("memory/daily/") for p in files)
+    assert "memory/SCRATCHPAD.md" not in files
+    assert not any(p == "memory/daily" for p in files)

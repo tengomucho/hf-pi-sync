@@ -65,6 +65,11 @@ def fake_agent(tmp_path, monkeypatch):
     (ag / "sessions").mkdir()
     (ag / "sessions" / "local.jsonl").write_text("[]")
     (ag / "auth.json").write_text('{"token":"secret"}')
+    (ag / "memory").mkdir()
+    (ag / "memory" / "MEMORY.md").write_text("# MEMORY\nshared durable facts\n")
+    (ag / "memory" / "daily").mkdir()
+    (ag / "memory" / "daily" / "2026-07-03.md").write_text("local daily log\n")
+    (ag / "memory" / "SCRATCHPAD.md").write_text("- [ ] local todo\n")
     monkeypatch.setattr(syncmod, "agent_dir", lambda: ag)
     monkeypatch.setattr(syncmod, "_pi_install", lambda really_run: None)
     return ag
